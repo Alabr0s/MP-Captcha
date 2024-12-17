@@ -11,8 +11,8 @@
 ### Light Theme / Açık Tema
 ![MP-Captcha Light Theme](https://i.ibb.co/27qRsxH/Ekran-g-r-nt-s-17-12-2024-174940-localhost.jpg)
 
-### Dark Theme / Koyu Tema
-![MP-Captcha Dark Theme](https://i.ibb.co/PzVY83s/Ekran-g-r-nt-s-17-12-2024-174959-localhost.jpg)
+### Light Theme / Açık Tema
+![MP-Captcha Light Theme](https://i.ibb.co/PzVY83s/Ekran-g-r-nt-s-17-12-2024-174959-localhost.jpg)
 
 ## English
 
@@ -37,15 +37,10 @@ MP-Captcha is a powerful, modern, and user-friendly CAPTCHA solution designed to
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
 <!-- MP-Captcha CSS -->
-<link href="path/to/mp-captcha.css" rel="stylesheet">
+<link href="path/to/captcha.css" rel="stylesheet">
 
 <!-- MP-Captcha JavaScript -->
 <script src="path/to/captcha.js"></script>
-```
-
-#### Using npm
-```bash
-npm install mp-captcha
 ```
 
 ### Quick Start
@@ -125,15 +120,10 @@ MP-Captcha, web uygulamalarınızı otomatik botlardan ve spam'den korumak için
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
 <!-- MP-Captcha CSS -->
-<link href="path/to/mp-captcha.css" rel="stylesheet">
+<link href="path/to/captcha.css" rel="stylesheet">
 
 <!-- MP-Captcha JavaScript -->
 <script src="path/to/captcha.js"></script>
-```
-
-#### npm Kullanarak
-```bash
-npm install mp-captcha
 ```
 
 ### Hızlı Başlangıç
