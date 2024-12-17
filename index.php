@@ -117,9 +117,11 @@
                 <section id="kurulum" class="section">
                     <h2>Kurulum</h2>
                     <p>MP-Captcha'yı projenize eklemek için aşağıdaki dosyaları indirin ve projenize dahil edin:</p>
+                    <button class="btn btn-primary btn-demo" onclick="buttonCaptcha(this, downloadFile)">İndir</button>
+
                     <div class="code-block">
                         <pre><code class="language-php">
-require_once 'Captcha.php';
+require_once 'captcha.php';
 
 // CSS ve JavaScript dosyalarını sayfanıza ekleyin
 &lt;link rel="stylesheet" href="captcha.css"&gt;
@@ -292,7 +294,7 @@ function linkCaptcha(link, url) {
     </div>
 
     <?php
-    require_once 'Captcha.php';
+    require_once 'captcha.php';
     $captcha = new Captcha();
     $captcha->renderCaptcha();
     ?>
@@ -367,5 +369,25 @@ function linkCaptcha(link, url) {
             });
         }
     </script>
+    <script>
+function buttonCaptcha(button, callback) {
+    button.disabled = true;
+    const captcha = new CaptchaHandler();
+    captcha.show().then(result => {
+        if (result.success) {
+            callback();
+        }
+    }).finally(() => {
+        button.disabled = false;
+    });
+}
+
+function downloadFile() {
+    const link = document.createElement('a');
+    link.href = 'https://github.com/Alabr0s/MP-Captcha/archive/refs/heads/main.zip';
+    link.download = 'MP-Captcha-main.zip';
+    link.click();
+}
+</script>
 </body>
 </html>
