@@ -8,6 +8,11 @@ class CaptchaHandler {
             containerID: options.containerID || 'body'
         };
         
+        this.timers = new Map();
+        this.currentCaptchaId = null;
+        this.selectedImages = new Set();
+        this.currentCategory = '';
+        
         this.injectStyles();
         this.createElements();
         this.initializeElements();
@@ -72,6 +77,10 @@ class CaptchaHandler {
                 justify-content: center;
                 align-items: center;
                 backdrop-filter: blur(5px);
+                -webkit-user-select: none;
+                -moz-user-select: none;
+                -ms-user-select: none;
+                user-select: none;
             }
             .captcha-popup {
                 background: rgba(255, 255, 255, 0.95);
@@ -82,6 +91,80 @@ class CaptchaHandler {
                 box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
                 position: relative;
                 animation: popupIn 0.4s ease-out;
+            }
+            .captcha-image {
+                position: relative;
+                aspect-ratio: 1;
+                cursor: pointer;
+                border-radius: 10px;
+                overflow: hidden;
+                transition: all 0.2s ease;
+                -webkit-tap-highlight-color: transparent;
+                -webkit-touch-callout: none;
+                -webkit-user-select: none;
+                -khtml-user-select: none;
+                -moz-user-select: none;
+                -ms-user-select: none;
+                user-select: none;
+            }
+            .captcha-image::after {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(52, 152, 219, 0);
+                transition: background-color 0.3s ease;
+                pointer-events: none;
+                z-index: 1;
+            }
+            .captcha-image.selected::after {
+                background: rgba(52, 152, 219, 0.4);
+            }
+            .captcha-image.selected::before {
+                content: '✓';
+                position: absolute;
+                top: 10px;
+                right: 10px;
+                color: white;
+                font-size: 20px;
+                z-index: 2;
+                text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+            }
+            .captcha-image img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                transition: all 0.3s ease;
+                pointer-events: none;
+                -webkit-user-drag: none;
+                -khtml-user-drag: none;
+                -moz-user-drag: none;
+                -o-user-drag: none;
+                -ms-user-select: none;
+                user-select: none;
+                -webkit-touch-callout: none;
+                pointer-events: none;
+            }
+            @keyframes ripple {
+                0% {
+                    transform: scale(0);
+                    opacity: 0.7;
+                }
+                100% {
+                    transform: scale(2);
+                    opacity: 0;
+                }
+            }
+            .captcha-image .ripple {
+                position: absolute;
+                border-radius: 50%;
+                background: rgba(255, 255, 255, 0.7);
+                transform: scale(0);
+                animation: ripple 0.6s ease-out;
+                pointer-events: none;
+                z-index: 2;
             }
             .captcha-watermark {
                 position: absolute;
@@ -111,6 +194,11 @@ class CaptchaHandler {
                 font-size: 1.2em;
                 color: #2c3e50;
                 font-weight: 600;
+            }
+            .captcha-description {
+                font-size: 1em;
+                color: #666;
+                margin-bottom: 10px;
             }
             .captcha-controls {
                 display: flex;
@@ -153,42 +241,6 @@ class CaptchaHandler {
                 gap: 10px;
                 margin-top: 20px;
             }
-            .captcha-image {
-                position: relative;
-                aspect-ratio: 1;
-                cursor: pointer;
-                border-radius: 10px;
-                overflow: hidden;
-                transition: all 0.2s ease;
-            }
-            .captcha-image img {
-                width: 100%;
-                height: 100%;
-                object-fit: cover;
-                transition: transform 0.3s ease;
-            }
-            .captcha-image:hover img {
-                transform: scale(1.1);
-            }
-            .captcha-image.selected::after {
-                content: 'âœ“';
-                position: absolute;
-                top: 50%;
-                left: 50%;
-                transform: translate(-50%, -50%);
-                font-size: 2em;
-                color: white;
-                text-shadow: 0 0 10px rgba(0,0,0,0.5);
-            }
-            .captcha-image.selected::before {
-                content: '';
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background: rgba(52, 152, 219, 0.5);
-            }
             .captcha-notification {
                 position: fixed;
                 bottom: 20px;
@@ -219,11 +271,11 @@ class CaptchaHandler {
             <div id="captchaOverlay" class="captcha-overlay">
                 <div class="captcha-popup">
                     <div class="captcha-header">
-                        <h3>LÃ¼tfen <span id="captchaCategory"></span> olan resimleri seÃ§in</h3>
+                        <h3>Lütfen <span id="captchaCategory"></span> içeren resimleri seçin</h3>
                         <div class="captcha-controls">
                             <span id="captchaTimer">30</span>
-                            <button id="refreshCaptcha" class="refresh-btn">â†»</button>
-                            <button id="closeCaptcha" class="close-btn">Ã—</button>
+                            <button id="refreshCaptcha" class="refresh-btn">⟳</button>
+                            <button id="closeCaptcha" class="close-btn">🗙</button>
                         </div>
                     </div>
                     <div id="captchaGrid" class="captcha-grid"></div>
@@ -238,22 +290,37 @@ class CaptchaHandler {
     }
 
     initializeElements() {
-        this.overlay = document.getElementById('captchaOverlay');
-        this.grid = document.getElementById('captchaGrid');
-        this.categorySpan = document.getElementById('captchaCategory');
-        this.timerSpan = document.getElementById('captchaTimer');
-        this.refreshBtn = document.getElementById('refreshCaptcha');
-        this.closeBtn = document.getElementById('closeCaptcha');
+        this.overlay = document.createElement('div');
+        this.overlay.className = 'captcha-overlay';
+        this.overlay.innerHTML = `
+            <div class="captcha-popup">
+                <div class="captcha-header">
+                    <div class="captcha-description">
+                        Lütfen <span id="captchaCategory" style="font-weight: bold; color: #3498db;"></span> içeren resimleri seçin
+                    </div>
+                    <div class="captcha-controls">
+                        <div id="captchaTimer">30</div>
+                        <button class="refresh-btn">⟳</button>
+                        <button class="close-btn">✕</button>
+                    </div>
+                </div>
+                <div class="captcha-grid"></div>
+                <div class="captcha-watermark">CAPTCHA</div>
+            </div>
+        `;
         
-        this.timer = null;
-        this.timeLeft = 30;
-        this.currentData = null;
-        this.selectedImages = new Set();
-        this.resolvePromise = null;
+        document.body.appendChild(this.overlay);
+        
+        this.popup = this.overlay.querySelector('.captcha-popup');
+        this.grid = this.overlay.querySelector('.captcha-grid');
+        this.timerDisplay = this.overlay.querySelector('#captchaTimer');
+        this.categoryDisplay = this.overlay.querySelector('#captchaCategory');
+        this.refreshBtn = this.overlay.querySelector('.refresh-btn');
+        this.closeBtn = this.overlay.querySelector('.close-btn');
     }
 
     initializeEventListeners() {
-        this.refreshBtn.addEventListener('click', () => this.refresh());
+        this.refreshBtn.addEventListener('click', () => this.refreshCaptcha());
         this.closeBtn.addEventListener('click', () => {
             this.close();
             if (this.resolvePromise) {
@@ -264,7 +331,7 @@ class CaptchaHandler {
 
     async show() {
         this.overlay.style.display = 'flex';
-        await this.refresh();
+        await this.refreshCaptcha();
         
         return new Promise(resolve => {
             this.resolvePromise = resolve;
@@ -276,167 +343,270 @@ class CaptchaHandler {
         this.clearTimer();
     }
 
-    async refresh() {
-        this.clearTimer();
-        this.selectedImages.clear();
-        
+    decode(data) {
         try {
-            const response = await fetch(this.options.endpoint, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: 'action=generate'
-            });
-            
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-
-            const encodedData = await response.text();
-            this.currentData = this.decode(encodedData);
-            
-            this.categorySpan.textContent = this.currentData.category;
-            this.renderGrid();
-            this.startTimer();
+            // Ters çevrilmiş base64'ü düzelt
+            const reversed = data.split('').reverse().join('');
+            // Base64'ü çöz
+            const decoded = atob(reversed);
+            // JSON parse
+            return JSON.parse(decoded);
         } catch (error) {
-            console.error('Captcha yenileme hatasÄ±:', error);
-            this.showNotification('Captcha yÃ¼klenirken bir hata oluÅŸtu', false);
-            if (this.resolvePromise) {
-                this.resolvePromise({ success: false, error });
-            }
+            console.error('Decode error:', error);
+            throw new Error('Invalid response format');
         }
     }
 
-    decode(data) {
-        const reversed = data.split('').reverse().join('');
-        const decoded = atob(reversed);
-        return JSON.parse(decoded);
-    }
-
-    renderGrid() {
-        this.grid.innerHTML = '';
-        this.currentData.images.forEach((image, index) => {
-            const div = document.createElement('div');
-            div.className = 'captcha-image';
+    async refreshCaptcha() {
+        try {
+            // Seçimleri sıfırla
+            this.selectedImages.clear();
+            this.grid.innerHTML = '';
             
-            const img = document.createElement('img');
-            img.src = image.url;
-            img.alt = `Captcha resmi ${index + 1}`;
-            img.loading = 'eager';
-            
-            img.onerror = () => {
-                img.src = 'data:image/svg+xml,' + encodeURIComponent(`
-                    <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
-                        <rect width="100" height="100" fill="#f0f0f0"/>
-                        <text x="50" y="50" font-family="Arial" font-size="14" text-anchor="middle" dy=".3em" fill="#666">
-                            Resim yÃ¼klenemedi
-                        </text>
-                    </svg>
-                `);
-            };
-            
-            div.appendChild(img);
-            
-            div.addEventListener('click', () => {
-                if (this.selectedImages.has(index)) {
-                    this.selectedImages.delete(index);
-                    div.classList.remove('selected');
-                } else {
-                    this.selectedImages.add(index);
-                    div.classList.add('selected');
-                }
-                
-                if (this.selectedImages.size === 3) {
-                    this.verify();
-                }
+            const response = await fetch(this.options.endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: 'action=generate'
             });
-            
-            this.grid.appendChild(div);
-        });
-    }
 
-    showNotification(message, success = true) {
-        const notification = document.createElement('div');
-        notification.className = `captcha-notification notification-${success ? 'success' : 'error'}`;
-        notification.textContent = message;
-        document.body.appendChild(notification);
-        
-        setTimeout(() => {
-            notification.remove();
-        }, 3000);
-    }
-
-    startTimer() {
-        this.timeLeft = 30;
-        this.updateTimer();
-        
-        this.timer = setInterval(() => {
-            this.timeLeft--;
-            this.updateTimer();
-            
-            if (this.timeLeft <= 0) {
-                this.clearTimer();
-                this.refresh();
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
-        }, 1000);
-    }
 
-    updateTimer() {
-        this.timerSpan.textContent = this.timeLeft;
-    }
+            const rawText = await response.text();
+            let cleanText = rawText.trim();
+            cleanText = cleanText.replace(/[^A-Za-z0-9+/=]/g, '');
+            
+            try {
+                const reversed = cleanText.split('').reverse().join('');
+                const decoded = atob(reversed);
+                const data = JSON.parse(decoded);
 
-    clearTimer() {
-        if (this.timer) {
-            clearInterval(this.timer);
-            this.timer = null;
+                if (!data || !data.images || !Array.isArray(data.images)) {
+                    throw new Error('Invalid data structure');
+                }
+
+                this.currentCaptchaId = Date.now();
+                
+                // Kategoriyi göster
+                this.currentCategory = data.category || '';
+                if (this.categoryDisplay) {
+                    this.categoryDisplay.textContent = this.currentCategory;
+                }
+
+                // Resimleri sakla
+                this.currentImages = data.images;
+                
+                // Resimleri yükle
+                data.images.forEach((image, index) => {
+                    const imageUrl = image.url || image;
+                    const isCorrect = image.isCorrect || false;
+                    
+                    const div = document.createElement('div');
+                    div.className = 'captcha-image';
+                    
+                    const img = new Image();
+                    img.loading = 'eager';
+                    img.draggable = false;
+                    img.oncontextmenu = () => false;
+                    
+                    // Resim koruma özellikleri
+                    const protectImage = (element) => {
+                        element.addEventListener('contextmenu', e => e.preventDefault());
+                        element.addEventListener('dragstart', e => e.preventDefault());
+                        element.addEventListener('drop', e => e.preventDefault());
+                        element.addEventListener('copy', e => e.preventDefault());
+                        element.addEventListener('cut', e => e.preventDefault());
+                        element.addEventListener('paste', e => e.preventDefault());
+                        element.addEventListener('mousedown', e => {
+                            if (e.button === 2) e.preventDefault();
+                        });
+                        element.addEventListener('keydown', e => {
+                            if (e.ctrlKey && (e.key === 'c' || e.key === 'C')) {
+                                e.preventDefault();
+                            }
+                        });
+                    };
+
+                    protectImage(div);
+                    protectImage(img);
+                    
+                    img.onload = () => {
+                        div.classList.add('loaded');
+                    };
+                    
+                    img.onerror = () => {
+                        console.error('Resim yüklenemedi:', imageUrl);
+                        div.classList.add('error');
+                        img.src = 'data:image/svg+xml,' + encodeURIComponent(`
+                            <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+                                <rect width="100" height="100" fill="#f0f0f0"/>
+                                <text x="50" y="50" font-family="Arial" font-size="14" text-anchor="middle" dy=".3em" fill="#666">
+                                    Resim yüklenemedi
+                                </text>
+                            </svg>
+                        `);
+                    };
+                    
+                    img.src = imageUrl;
+                    div.appendChild(img);
+                    
+                    // Tıklama efekti
+                    const createRipple = (event) => {
+                        const ripple = document.createElement('div');
+                        const rect = div.getBoundingClientRect();
+                        
+                        ripple.className = 'ripple';
+                        ripple.style.left = `${event.clientX - rect.left}px`;
+                        ripple.style.top = `${event.clientY - rect.top}px`;
+                        ripple.style.width = ripple.style.height = '40px';
+                        ripple.style.marginLeft = ripple.style.marginTop = '-20px';
+                        
+                        div.appendChild(ripple);
+                        
+                        ripple.addEventListener('animationend', () => {
+                            ripple.remove();
+                        });
+                    };
+
+                    div.addEventListener('click', async (e) => {
+                        e.preventDefault();
+                        createRipple(e);
+                        
+                        const wasSelected = div.classList.contains('selected');
+                        
+                        if (!wasSelected) {
+                            if (this.selectedImages.size >= 3) {
+                                this.showNotification('En fazla 3 resim seçebilirsiniz', 'error');
+                                return;
+                            }
+                            div.classList.add('selected');
+                            this.selectedImages.add(index);
+                        } else {
+                            div.classList.remove('selected');
+                            this.selectedImages.delete(index);
+                        }
+
+                        if (this.selectedImages.size === 3) {
+                            await this.verify();
+                        }
+                    });
+                    
+                    this.grid.appendChild(div);
+                });
+                
+                // Yeni zamanlayıcıyı başlat
+                this.startTimer(this.currentCaptchaId);
+                
+            } catch (parseError) {
+                console.error('Parse error:', parseError, 'Raw text:', rawText);
+                throw new Error('Invalid response format');
+            }
+            
+        } catch (error) {
+            console.error('Captcha yenileme hatası:', error);
+            this.showNotification('Captcha yüklenirken bir hata oluştu. Lütfen sayfayı yenileyin.', 'error');
         }
     }
 
     async verify() {
-        const selectedIndexes = Array.from(this.selectedImages);
-        const selectedImages = selectedIndexes.map(index => this.currentData.images[index]);
-        
-        if (selectedImages.every(img => img.isCorrect)) {
-            this.showNotification('DoÄŸrulama baÅŸarÄ±lÄ±!', true);
-            this.close();
-            if (this.resolvePromise) {
-                this.resolvePromise({ success: true });
-            }
+        const selectedElements = Array.from(this.grid.querySelectorAll('.captcha-image.selected'));
+        const selectedIndexes = selectedElements.map(el => 
+            Array.from(this.grid.children).indexOf(el)
+        );
+
+        if (selectedIndexes.length !== 3) {
+            this.showNotification('Lütfen 3 resim seçin', 'error');
+            return;
+        }
+
+        const allCorrect = selectedIndexes.every(index => 
+            this.currentImages[index].isCorrect
+        );
+
+        if (allCorrect) {
+            this.showNotification('Doğrulama başarılı!', 'success');
+            setTimeout(() => {
+                this.close();
+                if (this.resolvePromise) {
+                    this.resolvePromise({ success: true });
+                }
+            }, 1000);
         } else {
-            this.showNotification('YanlÄ±ÅŸ seÃ§im, tekrar deneyin', false);
-            await this.refresh();
+            this.showNotification('Yanlış seçim, tekrar deneyin', 'error');
+            await this.refreshCaptcha();
         }
     }
 
-    // Öğe denetleme koruması
-    protectFromDevTools() {
-        const protectElement = (element) => {
-            const originalOuterHTML = element.outerHTML;
-            const originalInnerHTML = element.innerHTML;
-            
-            // Öğenin değiştirilmesini izle
-            const observer = new MutationObserver((mutations) => {
-                mutations.forEach((mutation) => {
-                    if (mutation.type === 'childList' || mutation.type === 'attributes') {
-                        // Eğer öğe silinmiş veya değiştirilmişse
-                        if (element.outerHTML !== originalOuterHTML || element.innerHTML !== originalInnerHTML) {
-                            location.reload(); // Sayfayı yenile
-                        }
-                    }
-                });
-            });
+    startTimer(captchaId) {
+        // Önceki zamanlayıcıyı temizle
+        if (this.timers.has(captchaId)) {
+            clearInterval(this.timers.get(captchaId).interval);
+        }
 
-            observer.observe(element, {
-                attributes: true,
-                childList: true,
-                subtree: true
-            });
+        const timerData = {
+            timeLeft: 30,
+            interval: setInterval(() => {
+                if (this.currentCaptchaId !== captchaId) {
+                    clearInterval(timerData.interval);
+                    return;
+                }
+
+                timerData.timeLeft = Math.max(0, timerData.timeLeft - 1);
+                
+                if (this.timerDisplay) {
+                    this.timerDisplay.textContent = timerData.timeLeft;
+                }
+
+                if (timerData.timeLeft === 0) {
+                    clearInterval(timerData.interval);
+                    this.refreshCaptcha();
+                }
+            }, 1000)
         };
 
-        // Captcha ile ilgili tüm öğeleri koru
-        const captchaElements = document.querySelectorAll('.captcha-overlay, .captcha-popup, script[src*="captcha.bundle.js"]');
-        captchaElements.forEach(protectElement);
+        this.timers.set(captchaId, timerData);
+        
+        if (this.timerDisplay) {
+            this.timerDisplay.textContent = timerData.timeLeft;
+        }
+    }
+
+    showNotification(message, type = 'success') {
+        const notification = document.createElement('div');
+        notification.className = `captcha-notification ${type}`;
+        notification.textContent = message;
+        notification.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 10px 20px;
+            border-radius: 5px;
+            color: white;
+            font-weight: 500;
+            z-index: 1001;
+            background-color: ${type === 'success' ? '#2ecc71' : '#e74c3c'};
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        `;
+        
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            notification.style.opacity = '0';
+            setTimeout(() => {
+                document.body.removeChild(notification);
+            }, 300);
+        }, 3000);
+    }
+
+    clearTimer() {
+        if (this.timers.has(this.currentCaptchaId)) {
+            clearInterval(this.timers.get(this.currentCaptchaId).interval);
+            this.timers.delete(this.currentCaptchaId);
+        }
     }
 }
 
